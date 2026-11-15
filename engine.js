@@ -75,7 +75,7 @@ const top = (u) => { const e = eff(u); return e && (e.five != null || e.week != 
 const signedOut = {}, limited = {};
 const isOut = (id) => Date.now() - (signedOut[id] || 0) < 30 * 60e3;
 const isLimited = (id) => Date.now() - (limited[id] || 0) < 30 * 60e3;
-const OUT_NOTE = (a) => (a.proxy ? "the proxy gave no token" : `not signed in (run claude and /login${a.configDir !== DEFAULT_CLAUDE_DIR ? " with CLAUDE_CONFIG_DIR set" : ""})`);
+const OUT_NOTE = (a) => (a.added ? "its sign-in stopped working (remove it and add it again)" : a.proxy ? "the proxy gave no token" : `not signed in (run claude and /login${a.configDir !== DEFAULT_CLAUDE_DIR ? " with CLAUDE_CONFIG_DIR set" : ""})`);
 const claudeHeld = (a) => (a.added && !tokenOf(a.id) ? "its sign-in is missing: remove it and add it again" : a.proxy && !proxyToken(a) ? "proxy not reachable" : isOut(a.id) ? OUT_NOTE(a) : isLimited(a.id) ? "hit its usage limit recently" : "");
 const autoClaudes = () => CLAUDES.filter((a) => a.auto);
 const autoCodex = () => CODEX_HOMES.filter((c) => c.auto);
