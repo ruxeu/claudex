@@ -3,7 +3,7 @@ title: "Claudex: Claude Code and Codex from any browser, running on your own Mac
 published: false
 description: "An open-source web app that puts the Claude Code look in a browser and runs real claude and codex jobs in folders on your machine, so you can reach them from your phone."
 tags: claude, codex, ai, webdev, opensource
-cover_image:
+cover_image: https://raw.githubusercontent.com/ruxeu/claudex/main/docs/screenshot.png
 ---
 
 I use Claude Code and the Codex CLI all day. The annoying part is that they live on one machine. When I leave my desk, the jobs stay there and I can't reach them.

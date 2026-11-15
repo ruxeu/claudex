@@ -9,7 +9,7 @@ Each chat runs real coding-agent jobs in a working folder on that computer:
 
 Claudex itself is a small Node server with no dependencies, plus one plain HTML/JS page.
 
-_Screenshots: coming soon._
+![Claudex: a chat with a generated picture, the account menu and the night-sky theme](docs/screenshot.png)
 
 ## Features
 
