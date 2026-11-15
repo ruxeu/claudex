@@ -1,0 +1,45 @@
+{
+  "port": 5750,
+  "claudeBin": "claude",
+  "codexBin": "codex",
+  "defaultFolder": "~/Projects",
+  "allowedRoots": ["~/Projects"],
+
+  "publicHost": "claudex.example.com",
+  "signIn": {
+    "emails": ["you@example.com"],
+    "domains": []
+  },
+  "localNoSignIn": true,
+  "firebase": {
+    "apiKey": "your-firebase-web-api-key",
+    "authDomain": "your-project-id.firebaseapp.com",
+    "projectId": "your-project-id"
+  },
+  "pushSubject": "mailto:you@example.com",
+
+  "accounts": {
+    "claude": [
+      { "name": "Personal", "configDir": "~/.claude", "auto": true },
+      { "name": "Work", "configDir": "~/.claude-work", "auto": false }
+    ],
+    "codex": [
+      { "name": "Codex 1", "home": "~/.codex", "auto": true },
+      { "name": "Codex 2", "home": "~/.codex2", "auto": true },
+      { "name": "Codex checks", "home": "~/.codex3", "auto": false }
+    ]
+  },
+
+  "claudeModels": [
+    { "id": "claude-opus-5-5", "label": "Opus 5.5" },
+    { "id": "claude-sonnet-5-5", "label": "Sonnet 5.5" },
+    { "id": "claude-haiku-5-5", "label": "Haiku 5.5" }
+  ],
+  "defaults": {
+    "account": "auto",
+    "mode": "acceptEdits",
+    "claude": { "model": "claude-opus-5-5", "effort": "high" },
+    "codex": { "model": "gpt-6-luna", "effort": "medium" }
+  },
+  "extraPrompt": ""
+}

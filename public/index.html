@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<title>Claudex</title>
+<link rel="icon" href="/icon-64.png" sizes="64x64"><link rel="icon" href="/icon-32.png" sizes="32x32"><link rel="apple-touch-icon" href="/icon-180.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#1f1f1e">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div id="app">
+  <aside id="side" aria-label="Chats">
+    <div class="side-top"><span class="brand"><img src="/icon-64.png" alt="">Claudex</span><button id="collapseBtn" class="icon only-desk" aria-label="Hide sidebar" title="Hide sidebar (Ctrl/⌘ B)"></button><button id="sideClose" class="icon only-phone" aria-label="Close the menu"></button></div>
+    <nav>
+      <button id="newBtn" class="nav new"></button>
+      <button id="searchBtn" class="nav"></button>
+      <div id="searchBox" hidden><input id="search" type="search" placeholder="Search chats" aria-label="Search chats" autocomplete="off"></div>
+      <button id="acctNav" class="nav"></button>
+      <button id="runNav" class="nav"></button>
+      <button id="themeNav" class="nav"></button>
+    </nav>
+    <div id="chatList" class="side-list"></div>
+    <div class="side-foot">
+      <button id="diskWarn" class="diskwarn" hidden></button>
+      <div id="quickAcct" class="qa" role="radiogroup" aria-label="Account"></div>
+      <div class="foot-row"><button id="me" class="me" aria-haspopup="menu" title="Switch account"><span class="avatar">U</span><span class="t">User <small id="who"></small></span><svg class="i caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button><button id="setBtn" class="icon" aria-label="Settings" aria-haspopup="menu"></button></div>
+    </div>
+  </aside>
+  <div id="sideGrip" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" tabindex="0" title="Drag to resize · double-click to reset"></div>
+  <div id="scrim"></div>
+  <main id="main">
+    <canvas id="wall" aria-hidden="true"></canvas>
+    <header class="top">
+      <button id="menuBtn" class="icon only-phone" aria-label="Open chats"></button>
+      <button id="title" class="title" aria-haspopup="menu"><span>New session</span></button>
+      <div class="top-right"><button id="themeTop" class="icon" aria-label="Themes"></button><button id="newTop" class="icon only-phone" aria-label="New chat"></button></div>
+    </header>
+    <section id="thread" aria-live="polite">
+      <div id="empty" class="col"></div>
+      <div id="msgs" class="col"></div>
+      <div id="queued" class="col"></div>
+    </section>
+    <footer id="dock" class="col">
+      <div id="composer" class="composer">
+        <div id="listening" class="listening" hidden><span class="bars"><i></i><i></i><i></i><i></i></span><span id="listenTx">Listening… talk, I'm writing it down</span></div>
+        <div id="attachRow"></div>
+        <div class="crow">
+          <button id="addBtn" class="icon" aria-label="Attach files"></button>
+          <textarea id="input" rows="1" placeholder="Type / for commands" autocomplete="off" aria-label="Message"></textarea>
+          <button id="micBtn" class="icon" aria-label="Talk" aria-pressed="false"></button>
+          <button id="sendBtn" class="icon" aria-label="Send"></button>
+        </div>
+      </div>
+      <div class="chips">
+        <button id="folderChip" class="chip" aria-haspopup="menu"></button>
+        <span class="grow"></span>
+        <button id="acctChip" class="chip" aria-haspopup="menu"></button>
+        <button id="modelChip" class="chip" aria-haspopup="menu"></button>
+        <button id="modeChip" class="chip" aria-haspopup="menu"></button>
+        <button id="ctxRing" class="chip ring" aria-haspopup="menu" hidden></button>
+      </div>
+    </footer>
+  </main>
+</div>
+<div id="toast" role="status"></div>
+<input type="file" id="fileIn" multiple hidden>
+<script src="/md.js"></script>
+<script src="/themes.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
