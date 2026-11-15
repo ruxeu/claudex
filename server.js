@@ -75,6 +75,7 @@ http.createServer((req, res) => {
     const out = (r, ok = 200) => send(res, r?.error ? 409 : ok, r ?? { error: "not found" });
     if (u === "/api/state" && req.method === "GET") return send(res, 200, { ...engine.state(), watches: push.watches(), pushKey: push.publicKey(), user: user === "this Mac" ? "this Mac" : user.split("@")[0], onMac: user === "this Mac" });
     if (u === "/api/running" && req.method === "GET") return send(res, 200, engine.running());
+    { const lm = /^\/api\/logins\/(a[a-z0-9]+)$/.exec(u); if (lm && req.method === "GET") return out(engine.loginStatus(lm[1])); }
     if (u === "/api/desktop-sessions" && req.method === "GET") return send(res, 200, { sessions: engine.desktopSessions() });
     if (u === "/api/chats" && req.method === "GET") return send(res, 200, { chats: engine.list(), folders: engine.folders.list(), ver: engine.ver() });
     const cm = /^\/api\/chats\/(c[a-z0-9]+)(?:\/(send|stop|retry|compact))?$/.exec(u);
@@ -98,6 +99,10 @@ http.createServer((req, res) => {
       if (u === "/api/chats" && req.method === "POST") return out(engine.create(j));
       if (u === "/api/folders" && req.method === "POST") return out(engine.folders.create(j.name));
       { const fm = /^\/api\/folders\/(f[a-z0-9]+)$/.exec(u); if (fm) return out(req.method === "DELETE" ? engine.folders.remove(fm[1]) : engine.folders.update(fm[1], j)); }
+      /* Add account: Terminal sign-in only for someone sitting at this computer (it opens a window there) */
+      if (u === "/api/logins" && req.method === "POST") { if (j.terminal && user !== "this Mac") return send(res, 403, { error: "Terminal sign-in works only on the computer Claudex runs on" }); return out(engine.startLogin(j.engine, j.name, { terminal: !!j.terminal })); }
+      { const lm = /^\/api\/logins\/(a[a-z0-9]+)(\/code)?$/.exec(u); if (lm) return out(lm[2] ? engine.loginCode(lm[1], j.code) : engine.cancelLogin(lm[1])); }
+      { const am = /^\/api\/accounts\/(a[a-z0-9]+)$/.exec(u); if (am && req.method === "DELETE") return out(engine.removeAccount(am[1])); }
       if (u === "/api/import" && req.method === "POST") return out(engine.importSession(String(j.id || "")));
       if (u === "/api/nickname" && req.method === "POST") { const real = engine.checkFolder(unmask(String(j.path || ""))); if (!real) return send(res, 404, { error: "That folder doesn't exist on the Mac" }); return out(setNickname(real, j.name)); }
       if (cm && req.method === "PATCH" && !cm[2]) return out(engine.update(cm[1], j));

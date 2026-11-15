@@ -15,12 +15,14 @@ _Screenshots: coming soon._
 
 - **Chats like the desktop app.** Chats, pins, folders in the sidebar, sub-sessions under a parent chat and search. You can also import a session from the Claude desktop app; it carries on here as a branch.
 - **Chips under the composer:** working folder, account, model and effort, and permission mode (plan, accept edits, auto, bypass).
+- **Add account in one card.** Name it, pick Claude or Codex, and sign in with a link and a code, from any device. On a Mac you can sign in with Terminal instead.
 - **Accounts.** You pick one of your own Claude logins or Codex logins for each chat, or choose Auto. A chat can move between accounts and between engines; Claudex carries the session over or sends a recap.
 - **Voice input** through the browser's own speech recognition, with an optional hands-free mode.
 - **Media in the chat.** Any picture, video or sound file that a reply names by its full path appears under that reply. Attachments and drag-and-drop into project folders are supported.
 - **Queued follow-ups.** You can send while a reply is still running; your message goes out when the reply finishes. "Send now" stops the current reply first.
 - **Compaction.** One tap summarises a long chat, and the next message starts a fresh session from that summary.
 - **Animated ASCII wallpapers**, set per chat.
+- **Save a chat as Markdown** from its right-click menu. Press `?` for the keyboard shortcuts.
 - **Web Push notifications.** For example, "this account is available again". This works on Android Chrome, and on an iPhone once the app is added to the Home Screen.
 - **Drive guard.** Jobs, uploads and dropped files are refused on a drive with less than 5 GB free.
 - **Masking layer.** The home folder, mounted drive names and folders you nickname are replaced before anything reaches the browser.
@@ -36,9 +38,14 @@ _Screenshots: coming soon._
 
 ## Setup
 
+**The easy way:** clone the repo, open the folder in Claude Code, and say *"set up Claudex for me"*. [CLAUDE.md](CLAUDE.md) walks it through the steps with you. It never touches your existing logins.
+
+**By hand:**
+
 ```sh
 git clone <this repo> claudex && cd claudex
 cp config.example.json config.json   # then edit it
+node tools/doctor.js                 # checks Node, the CLIs, the config and the port; changes nothing
 node server.js                       # http://127.0.0.1:5750
 ```
 
@@ -67,6 +74,16 @@ Leave out any key and Claudex uses a sensible default. With no `config.json` at 
 ### Your accounts
 
 Claudex can switch between several of **your own** logins, chosen per chat. One example is a personal Claude login and a work Claude login. Each provider's terms decide how you may use its accounts; follow the terms of each one.
+
+**Add account (easiest).** Open **Accounts** in the sidebar and choose **+ Add account**. Give the account a name, then pick:
+
+- **Codex.** Claudex shows a link and a short code. You open the link, sign in and enter the code. The account gets its own `CODEX_HOME` (`~/.codex-claudex-…`), which starts with a copy of your main `config.toml`, so the same settings and MCP servers carry over.
+- **Claude.** Claudex shows a claude.com link. You approve it, copy the code it shows and paste it back. Claudex keeps the long-lived sign-in token from `claude setup-token` in `data/accounts/`, readable only by you. Jobs then run with your usual `~/.claude` setup (skills, plugins, MCP servers) under that account.
+- **On a Mac**, the card also offers **Sign in with Terminal**. It opens Terminal with the usual sign-in, and the card picks up the result.
+
+Accounts you add this way show **Remove** in the Accounts list. Removing an account moves its chats back to Auto. A Codex folder stays on disk with its sessions; delete it yourself if you want it gone.
+
+The manual ways below still work, and they suit accounts you want to keep in `config.json`.
 
 **A second Claude login.** Give it its own config folder and sign in once:
 
@@ -176,6 +193,7 @@ When the server stops, any jobs it is running stop too, so a restart never leave
 
 - `tools/ask-session.sh "<session name>" "<question>"` asks one of your Claude desktop sessions a question through a read-only fork (`--fork-session`, plan mode), and the live session is left untouched. Jobs know about this script.
 - `tools/claudex-send.sh "<chat name>" "<message>" --from NAME [--wait]` posts into a Claudex chat from another script or session. It only works on the same computer, and only while `localNoSignIn` is `true`.
+- `node tools/doctor.js` checks the setup and says how to fix anything missing. It changes nothing.
 - `node tools/make-icons.js` regenerates the logo and the PNG icons.
 
 ## Security
@@ -188,7 +206,7 @@ When the server stops, any jobs it is running stop too, so a restart never leave
 - **On a shared computer**, set `localNoSignIn: false`. Any local user can reach `127.0.0.1`.
 - **Permission modes matter.** Bypass mode means the agent runs with no questions asked. New chats start in `acceptEdits` unless you change `defaults.mode`; use `allowedRoots` to keep working folders where you expect them.
 - **Accept edits has limits.** In accept-edits mode a headless Claude job can't run Bash, so handing pictures to Codex and `ask-session.sh` only work in auto or bypass mode, or when that account's Claude settings allow Bash. Codex's `workspace-write` sandbox also blocks network access.
-- **`data/` is private.** It holds the cookie-signing secret, the Web Push private key, chats and uploads. Back it up, never commit it, and delete `data/session.secret` to sign everyone out.
+- **`data/` is private.** It holds the cookie-signing secret, the Web Push private key, the sign-in tokens of accounts added in the app, chats and uploads. Back it up, never commit it, and delete `data/session.secret` to sign everyone out.
 - **The masking layer is a privacy convenience, not a security boundary.** It hides home, drive and folder names on screen. Agents still see the real paths.
 - **Media are served only from paths a reply named or created.** Files are not served by arbitrary path. Sign-in attempts are limited to 10 per IP address every 15 minutes.
 - **Follow your providers' terms.** Running Claude Code or Codex through Claudex is still you using those products with your accounts.

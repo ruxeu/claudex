@@ -570,6 +570,7 @@
       if (!cur || cur.id !== id) el.appendChild(opt({ radio: false, icon: "code", label: "Open", onClick: function () { closeMenu(); openChat(id); } }));
       el.appendChild(opt({ radio: false, icon: "tab", label: "Open in new tab", onClick: function () { closeMenu(); window.open(location.pathname + "#" + id, "_blank", "noopener"); } }));
       el.appendChild(opt({ radio: false, icon: "link", label: "Copy link", onClick: function () { closeMenu(); copy(location.origin + location.pathname + "#" + id, "Link copied"); } }));
+      el.appendChild(opt({ radio: false, icon: "down2", label: "Save as Markdown", onClick: function () { closeMenu(); exportChat(id); } }));
       el.appendChild(sep());
       el.appendChild(opt({ radio: false, icon: "pencil", label: "Rename", onClick: function () { closeMenu(); rename(id, c.title); } }));
       el.appendChild(opt({ radio: false, icon: "agent", label: "New sub-session", onClick: function () { closeMenu(); newSub(id); } }));
@@ -583,6 +584,29 @@
         if (!armed) { armed = true; b.querySelector(".t span").textContent = "Tap again to delete"; return; }
         closeMenu(); api("/api/chats/" + id, { method: "DELETE" }).then(function () { if (cur && cur.id === id) newChat(); loadList(); toast("Chat deleted"); }).catch(function (e) { toast(e.message); });
       } }));
+    });
+  }
+  /* the whole chat as a Markdown file: your messages, the replies, and one line per step */
+  function exportChat(id) {
+    api("/api/chats/" + id + "?last=400").then(function (r) {
+      var c = r.chat || r, out = ["# " + c.title, ""];
+      (c.messages || []).forEach(function (m) {
+        if (m.who === "you") { out.push("## You" + (m.from ? " (from " + m.from + ")" : ""), "", m.text || "", ""); return; }
+        out.push("## Reply", "");
+        (m.parts || []).forEach(function (p) { if (p.t === "text") out.push(p.text, ""); else if (p.t === "step") out.push("- " + p.text); else if (p.t === "error") out.push("> " + p.text, ""); });
+        out.push("");
+      });
+      if (c.total > (c.messages || []).length) out.splice(2, 0, "_Last " + c.messages.length + " of " + c.total + " messages._", "");
+      var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([out.join("\n")], { type: "text/markdown" }));
+      a.download = (c.title || "chat").replace(/[^\w .-]/g, "").trim().slice(0, 60) + ".md"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+      toast("Saved " + a.download);
+    }).catch(function (e) { toast(e.message); });
+  }
+  function keysSheet() {
+    var mac = /Mac|iPhone|iPad/.test(navigator.platform), M = mac ? "⌘" : "Ctrl ", S = mac ? "⇧" : "Shift ";
+    sheet("Keyboard shortcuts", function (b) {
+      b.innerHTML = '<dl class="keys">' + [[M + S + "O", "New chat"], [M + "K", "Search chats"], [M + "B", "Show or hide the sidebar"], ["Enter", "Send"], [S + "Enter", "New line"], ["Esc", "Close a menu or card, stop the mic"], ["?", "This list"], ["Right-click", "More actions on chats, folders and messages"]]
+        .map(function (k) { return "<dt><kbd>" + esc(k[0]) + "</kbd></dt><dd>" + esc(k[1]) + "</dd>"; }).join("") + "</dl>";
     });
   }
   function moveFolderMenu(anchor, id) {
@@ -762,11 +786,47 @@
       mark();
     });
   }
+  /* Add account: a name, Claude or Codex, then the sign-in (a link + code on any device, or Terminal on the Mac) */
+  function addAccount() {
+    closeSheet();
+    var m = document.createElement("div"); m.className = "modal"; m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true"); m.setAttribute("aria-label", "Add account");
+    m.innerHTML = '<form class="sheet card-ask addcard"><h3>Add account</h3><input name="v" maxlength="30" placeholder="Name it, e.g. Work or Personal" aria-label="Account name" autocomplete="off">' +
+      '<div class="pick2"><button type="button" class="pickbtn" data-e="claude"><b>Claude</b><small>Claude Pro or Max</small></button><button type="button" class="pickbtn" data-e="codex"><b>Codex</b><small>ChatGPT Plus or Pro</small></button></div>' +
+      '<div class="ask-btns"><span class="grow"></span><button type="button" class="btn" data-cancel>Cancel</button></div></form>';
+    var f = m.querySelector("form"), close = function () { m.remove(); document.removeEventListener("keydown", key, true); clearInterval(poll); if (cur_ && cur_.state !== "done") api("/api/logins/" + cur_.id, { method: "DELETE" }).catch(function () {}); };
+    var key = function (e) { if (e.key === "Escape") { e.stopPropagation(); close(); } }, poll = 0, cur_ = null;
+    m.addEventListener("click", function (e) { if (e.target === m || e.target.closest("[data-cancel]")) close(); });
+    f.addEventListener("submit", function (e) { e.preventDefault(); });
+    var go = function (engine, terminal) {
+      var name = f.v.value.trim(); if (!name) { f.v.focus(); toast("Give the account a name first"); return; }
+      api("/api/logins", { method: "POST", body: { engine: engine, name: name, terminal: !!terminal } }).then(function (L) { cur_ = L; step(L); poll = setInterval(function () { api("/api/logins/" + L.id).then(function (x) { cur_ = x; step(x); }).catch(function () {}); }, 2500); }).catch(function (e2) { toast(e2.message); });
+    };
+    var step = function (L) {
+      var h = '<h3>' + (L.engine === "codex" ? "Codex" : "Claude") + ": " + esc(L.name) + "</h3>";
+      if (L.state === "done") { clearInterval(poll); h += '<p class="ok-line">' + ic("check") + " Connected. It's in your accounts now.</p>" + '<div class="ask-btns"><span class="grow"></span><button type="button" class="btn primary" data-done>Done</button></div>'; }
+      else if (L.state === "error") { clearInterval(poll); h += '<p class="err">' + esc(L.error) + '</p><div class="ask-btns"><span class="grow"></span><button type="button" class="btn" data-cancel>Close</button></div>'; }
+      else if (L.state === "terminal") h += '<p class="sheet-note">Terminal opened on the computer Claudex runs on. Finish signing in there; this card updates by itself.</p><div class="spinrow"><span class="spin"></span> Waiting for Terminal…</div><div class="ask-btns"><span class="grow"></span><button type="button" class="btn" data-cancel>Cancel</button></div>';
+      else if (L.engine === "codex" && L.url) h += '<ol class="steps-list"><li>Open the sign-in page<br><a class="btn" href="' + esc(L.url) + '" target="_blank" rel="noopener">' + ic("tab") + "Open " + esc(L.url.replace(/^https:\/\//, "")) + '</a></li><li>Enter this code<div class="bigcode">' + esc(L.code) + '</div><button type="button" class="btn" data-copy="' + esc(L.code) + '">' + ic("copy") + "Copy code</button></li></ol>" + '<div class="spinrow"><span class="spin"></span> Waiting for you to finish…</div><div class="ask-btns"><span class="grow"></span><button type="button" class="btn" data-cancel>Cancel</button></div>';
+      else if (L.engine === "claude" && L.url) h += '<ol class="steps-list"><li>Open the sign-in page and approve<br><a class="btn" href="' + esc(L.url) + '" target="_blank" rel="noopener">' + ic("tab") + 'Open claude.com sign-in</a></li><li>Copy the code it shows and paste it here<div class="pathform"><input name="code" placeholder="Paste the code" autocomplete="off" spellcheck="false" aria-label="Sign-in code"><button type="button" class="btn primary" data-code>Connect</button></div></li></ol>' + (L.state === "checking" ? '<div class="spinrow"><span class="spin"></span> Checking the code…</div>' : "") + '<div class="ask-btns"><span class="grow"></span><button type="button" class="btn" data-cancel>Cancel</button></div>';
+      else h += '<div class="spinrow"><span class="spin"></span> Getting the sign-in ready…</div>';
+      if (f.dataset.sig === h) return; var keepCode = f.code ? f.code.value : ""; f.dataset.sig = h; f.innerHTML = h; if (f.code) f.code.value = keepCode;
+    };
+    f.addEventListener("click", function (e) {
+      var p = e.target.closest("[data-e]"); if (p) return go(p.dataset.e, false);
+      var t = e.target.closest("[data-term]"); if (t) return go(t.dataset.term, true);
+      var c = e.target.closest("[data-copy]"); if (c) return copy(c.dataset.copy, "Code copied");
+      if (e.target.closest("[data-code]")) { var v = f.code.value.trim(); if (!v) return f.code.focus(); api("/api/logins/" + cur_.id + "/code", { method: "POST", body: { code: v } }).then(function (x) { cur_ = x; step(x); }).catch(function (x) { toast(x.message); }); }
+      if (e.target.closest("[data-done]")) { close(); api("/api/state").then(function (s2) { ST = s2; renderChips(); toast(cur_.name + " is ready to use"); acctSheet(); }); }
+    });
+    if (ST.onMac && ST.terminal) f.querySelector(".pick2").insertAdjacentHTML("afterend", '<div class="termrow">' + ic("run") + ' Or sign in with Terminal: <button type="button" class="linkbtn" data-term="claude">Claude</button> · <button type="button" class="linkbtn" data-term="codex">Codex</button></div>');
+    document.addEventListener("keydown", key, true); document.body.appendChild(m); setTimeout(function () { f.v.focus(); }, 30);
+  }
   function acctSheet() {
     api("/api/state").then(function (s) {
       ST = s; renderChips();
       sheet("Accounts", function (b) {
         var now = S().account;
+        var addB = document.createElement("button"); addB.className = "btn primary addacct"; addB.innerHTML = ic("plus") + "Add account"; addB.addEventListener("click", addAccount); b.appendChild(addB);
         var row = function (a) {
           var d = document.createElement("div"); d.className = "acct-row";
           var w = a.win, line = function (lab, pct, at) { return pct == null ? "" : "<small class=\"win\">" + lab + " " + Math.round(pct) + "%" + (at ? " · resets " + esc(when(at)) : pct > 0 ? "" : "") + "</small>"; };
@@ -774,6 +834,7 @@
             '<div class="use">' + (a.use != null ? "<span>" + Math.round(a.use) + '% used</span><span class="bar"><i class="' + useCls(a.use) + '" style="width:' + Math.min(100, a.use) + '%"></i></span>' : "") + "</div>" +
             (now === a.id ? "" : '<button class="btn">Use ' + esc(a.name) + "</button>");
           var btn = d.querySelector("button"); if (btn) btn.addEventListener("click", function () { setSettings({ account: a.id }).then(function () { closeSheet(); toast("Now on " + a.name); }); });
+          if (a.added) { var rm = document.createElement("button"); rm.className = "btn ghost"; rm.textContent = "Remove"; var armed = false; rm.addEventListener("click", function () { if (!armed) { armed = true; rm.textContent = "Tap again to remove"; return; } api("/api/accounts/" + a.addedId, { method: "DELETE" }).then(function () { toast(a.name + " removed"); acctSheet(); }).catch(function (e) { toast(e.message); }); }); (btn ? btn.parentNode : d).appendChild(rm); }
           if (a.engine !== "auto" && a.id !== "cx") { var bell = document.createElement("button"); bell.className = "btn bell" + (watching(a.id) ? " on" : ""); bell.innerHTML = ic("bell") + (watching(a.id) ? "Notifying when back" : "Notify me when back"); bell.addEventListener("click", function () { setWatch(a, !watching(a.id)); }); (btn ? btn.parentNode : d).appendChild(bell); if (btn) { var wrap = document.createElement("div"); wrap.className = "acct-btns"; btn.replaceWith(wrap); wrap.appendChild(btn); wrap.appendChild(bell); } }
           return d;
         };
@@ -851,6 +912,8 @@
       add({ icon: "users", label: "Switch account", run: function () { acctMenu($("#acctChip")); } });
       add({ icon: "monitor", label: "Change folder", run: function () { folderMenu($("#folderChip")); } });
       add({ icon: "palette", label: "Themes", run: themeSheet });
+      if (cur) add({ icon: "down2", label: "Save chat as Markdown", run: function () { exportChat(cur.id); } });
+      add({ icon: "enter", label: "Keyboard shortcuts", kb: "?", run: keysSheet });
       if ($("#app").classList.contains("collapsed")) add({ icon: "panel", label: "Show sidebar", kb: "⌘B", run: function () { setCollapsed(false); } });
     }
     if (L[L.length - 1] === "sep") L.pop();
@@ -900,6 +963,7 @@
     if (k === "k" && !e.shiftKey) { e.preventDefault(); openSearch(); }
     if (k === "o" && e.shiftKey) { e.preventDefault(); newChat(); }
   });
+  document.addEventListener("keydown", function (e) { if (e.key !== "?" || e.metaKey || e.ctrlKey || e.altKey || $(".modal")) return; var t = e.target; if (t.closest && t.closest("input, textarea, select, [contenteditable]")) return; e.preventDefault(); keysSheet(); });
 
   /* ---------- start ---------- */
   $("#newBtn").innerHTML = ic("plus") + "New"; $("#searchBtn").innerHTML = ic("search") + "Search"; $("#acctNav").innerHTML = ic("users") + "Accounts"; $("#themeNav").innerHTML = ic("palette") + "Themes";

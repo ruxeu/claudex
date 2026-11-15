@@ -392,3 +392,23 @@ body.resizing { cursor: col-resize; user-select: none; }
 .btn.primary:hover { background: #fff; }
 .btn.ghost { background: transparent; color: var(--muted); }
 @media (max-width: 760px) { .modal:has(.card-ask) { align-items: flex-start; padding-top: 18vh; } }
+
+/* Add account */
+.addacct { margin: 0 0 6px; }
+.addcard .pick2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pickbtn { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card); text-align: left; }
+.pickbtn:hover { border-color: var(--accent); background: var(--card-2); }
+.pickbtn b { font-size: 1em; } .pickbtn small { color: var(--dim); font-size: .82em; }
+.termrow { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: .85em; flex-wrap: wrap; }
+.termrow svg { width: 14px; height: 14px; }
+.linkbtn { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; }
+.steps-list { margin: 0; padding-left: 1.2em; display: grid; gap: 12px; }
+.steps-list li { line-height: 1.5; } .steps-list .btn { margin-top: 6px; }
+.bigcode { font: 600 1.6em/1.2 var(--mono); letter-spacing: .08em; margin: 6px 0; color: var(--text); }
+.spinrow { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9em; }
+.ok-line { display: flex; align-items: center; gap: 8px; color: var(--ok); margin: 0; }
+.ok-line svg { width: 18px; height: 18px; }
+/* keyboard shortcuts card */
+.keys { display: grid; grid-template-columns: max-content 1fr; gap: 10px 16px; margin: 0; align-items: center; }
+.keys dt { margin: 0; } .keys dd { margin: 0; color: var(--muted); }
+.keys kbd { font: 500 .85em/1 var(--mono); padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); white-space: nowrap; }

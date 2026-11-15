@@ -31,6 +31,17 @@ const DEFAULT_CWD = CFG.defaultFolder;
 const rj = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return d; } };
 const uid = () => Date.now().toString(36) + crypto.randomBytes(3).toString("hex");
 
+/* accounts added from the page (Add account) sit in data/accounts.json next to the ones in config.json.
+   A Claude one is a long-lived sign-in token (data/accounts/<id>.token, readable only by you) used with the default ~/.claude setup,
+   so it keeps your skills, plugins and MCP servers. A Codex one is its own CODEX_HOME (~/.codex-claudex-<id>), which starts with a copy of your config.toml. */
+const ACCTS = path.join(DATA, "accounts.json"), ACCT_DIR = path.join(DATA, "accounts");
+let added = rj(ACCTS, []); if (!Array.isArray(added)) added = [];
+const saveAdded = () => fs.writeFileSync(ACCTS, JSON.stringify(added, null, 1), { mode: 0o600 });
+const tokenOf = (id) => { try { return fs.readFileSync(path.join(ACCT_DIR, id + ".token"), "utf8").trim(); } catch { return ""; } };
+const pushClaude = (a) => CLAUDES.push({ id: a.id, name: a.name, configDir: DEFAULT_CLAUDE_DIR, auto: true, proxy: null, added: a.id });
+const pushCodex = (a) => CODEX_HOMES.push({ n: a.n, id: "cx" + a.n, name: a.name, home: a.home, auto: true, added: a.id });
+for (const a of added) { if (a.engine === "claude") pushClaude(a); else if (a.engine === "codex" && fs.existsSync(path.join(a.home, "auth.json"))) pushCodex(a); }
+
 /* ---------- accounts ---------- */
 let cxCache = { at: 0, v: {} };
 /* each Codex account's newest session file carries its rate limits; go straight to the newest day folder (year/month/day)
@@ -65,7 +76,7 @@ const signedOut = {}, limited = {};
 const isOut = (id) => Date.now() - (signedOut[id] || 0) < 30 * 60e3;
 const isLimited = (id) => Date.now() - (limited[id] || 0) < 30 * 60e3;
 const OUT_NOTE = (a) => (a.proxy ? "the proxy gave no token" : `not signed in (run claude and /login${a.configDir !== DEFAULT_CLAUDE_DIR ? " with CLAUDE_CONFIG_DIR set" : ""})`);
-const claudeHeld = (a) => (a.proxy && !proxyToken(a) ? "proxy not reachable" : isOut(a.id) ? OUT_NOTE(a) : isLimited(a.id) ? "hit its usage limit recently" : "");
+const claudeHeld = (a) => (a.added && !tokenOf(a.id) ? "its sign-in is missing: remove it and add it again" : a.proxy && !proxyToken(a) ? "proxy not reachable" : isOut(a.id) ? OUT_NOTE(a) : isLimited(a.id) ? "hit its usage limit recently" : "");
 const autoClaudes = () => CLAUDES.filter((a) => a.auto);
 const autoCodex = () => CODEX_HOMES.filter((c) => c.auto);
 
@@ -74,9 +85,9 @@ function accounts() {
   const autoNote = [ac.length ? ac.join(", ") : "", autoCodex().length ? "the least-used Codex" : ""].filter(Boolean).join(", then ") || "no account is set for Auto";
   return [
     { id: "auto", engine: "auto", name: "Auto", note: autoNote, use: null },
-    ...CLAUDES.map((a) => ({ id: a.id, engine: "claude", name: a.name, note: "Claude" + (a.auto ? "" : " · only when you pick it"), use: null, held: claudeHeld(a) })),
+    ...CLAUDES.map((a) => ({ id: a.id, engine: "claude", name: a.name, note: a.added ? "Claude · added here" : "Claude" + (a.auto ? "" : " · only when you pick it"), use: null, held: claudeHeld(a), added: !!a.added, addedId: a.added || undefined })),
     ...(autoCodex().length ? [{ id: "cx", engine: "codex", name: "Codex Auto", note: "least-used Codex", use: null }] : []),
-    ...CODEX_HOMES.map((c) => ({ id: c.id, engine: "codex", name: c.name, win: eff(xu[c.n]), note: c.auto ? "" : "only when you pick it", use: top(xu[c.n]) })),
+    ...CODEX_HOMES.map((c) => ({ id: c.id, engine: "codex", name: c.name, win: eff(xu[c.n]), note: c.added ? "added here" : c.auto ? "" : "only when you pick it", use: top(xu[c.n]), added: !!c.added, addedId: c.added || undefined })),
   ];
 }
 
@@ -230,7 +241,8 @@ const binDirs = [CLAUDE, CODEX].filter(Boolean).map((b) => path.dirname(b));
 const envBase = () => ({ ...process.env, HOME, USER, LOGNAME: USER, PATH: [...new Set([...binDirs, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"])].join(":") });
 /* a Claude account = its config folder (CLAUDE_CONFIG_DIR, left unset for the default ~/.claude) plus, optionally, a proxy base URL and token */
 function claudeEnv(a) {
-  const e = envBase(); for (const k of ["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CONFIG_DIR"]) delete e[k];
+  const e = envBase(); for (const k of ["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN"]) delete e[k];
+  if (a.added) e.CLAUDE_CODE_OAUTH_TOKEN = tokenOf(a.id);
   if (a.configDir !== DEFAULT_CLAUDE_DIR) e.CLAUDE_CONFIG_DIR = a.configDir;
   if (a.proxy) Object.assign(e, { ANTHROPIC_BASE_URL: a.proxy.baseUrl, ANTHROPIC_AUTH_TOKEN: proxyToken(a) });
   return e;
@@ -333,7 +345,8 @@ function start(c, ai, text, att, tries, k) {
 
   if (e === "claude") {
     const acct = t.acct, a = claudeOf(acct);
-    if (!a) return failNext("That Claude account is no longer in config.json.");
+    if (!a) return failNext("That Claude account is gone (removed, or no longer in config.json).");
+    if (a.added && !tokenOf(a.id)) return failNext(`${nameOf(t)}: its sign-in is missing. Remove it and add it again.`);
     if (!CLAUDE) return failNext("The claude program wasn't found (set claudeBin in config.json).");
     if (a.proxy && !proxyToken(a)) {
       if (!t.asked && a.proxy.tokenUrl) { t.asked = true; j.step = "Getting the account ready"; return fetchToken(a).then(() => { if (!j.stopped) { jobs.delete(c.id); start(c, ai, text, att, tries, k); } }); }
@@ -537,9 +550,89 @@ function upload(id) {
   return { id, name: j.name, image: j.mime.startsWith("image/"), path: f, mime: j.mime };
 }
 
+/* ---------- Add account: Codex by device code (a link + a short code), Claude by `claude setup-token` (a link, then paste the code back) ---------- */
+const logins = new Map();
+const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g;
+const TERMINAL = process.platform === "darwin";  // "sign in with Terminal" opens Terminal.app, so macOS only
+function newCodexHome(id) {
+  const home = path.join(HOME, ".codex-claudex-" + id.slice(1)); fs.mkdirSync(home, { recursive: true, mode: 0o700 });
+  const src = path.join((CFG.accounts.codex[0] || { home: path.join(HOME, ".codex") }).home, "config.toml");  // same settings and MCP servers as your main Codex
+  try { if (fs.existsSync(src)) fs.copyFileSync(src, path.join(home, "config.toml")); } catch {}
+  return home;
+}
+function addCodex(L) { const n = Math.max(100, ...CODEX_HOMES.map((c) => c.n), ...added.filter((a) => a.n).map((a) => a.n)) + 1; const a = { id: L.id, engine: "codex", name: L.name, home: L.home, n, at: Date.now() }; added.push(a); saveAdded(); pushCodex(a); cxCache.at = 0; L.state = "done"; }
+function addClaude(L, token) { fs.mkdirSync(ACCT_DIR, { recursive: true, mode: 0o700 }); fs.writeFileSync(path.join(ACCT_DIR, L.id + ".token"), token, { mode: 0o600 }); const a = { id: L.id, engine: "claude", name: L.name, at: Date.now() }; added.push(a); saveAdded(); pushClaude(a); L.state = "done"; }
+/* "Sign in with Terminal" (from this computer only): the usual sign-in runs in Terminal; tools/terminal-login.py leaves the result in data/login-tmp/<id>.json */
+function terminalLogin(L) {
+  const res = path.join(DATA, "login-tmp", L.id + ".json"); fs.mkdirSync(path.dirname(res), { recursive: true, mode: 0o700 }); L.result = res;
+  const q = (x) => "'" + String(x).replace(/'/g, "'\\''") + "'";
+  const bin = L.engine === "codex" ? CODEX : CLAUDE;
+  const envs = L.engine === "codex" ? `CODEX_HOME=${q(L.home)} CLAUDEX_CODEX_BIN=${q(CODEX)}` : `CLAUDE_CONFIG_DIR=${q(path.join(DATA, "login-tmp", L.id + "-cfg"))} CLAUDEX_CLAUDE_BIN=${q(CLAUDE)}`;
+  const cmd = `clear; echo 'Claudex: signing in a new ${L.engine === "codex" ? "Codex" : "Claude"} account'; PATH=${q(path.dirname(bin) + ":/usr/bin:/bin")} ${envs} /usr/bin/python3 -I ${q(path.join(__dirname, "tools", "terminal-login.py"))} ${L.engine} ${q(res)}`;
+  const as = (x) => x.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  cp.execFile("/usr/bin/osascript", ["-e", `tell application "Terminal" to do script "${as(cmd)}"`, "-e", 'tell application "Terminal" to activate'], () => {});
+  L.state = "terminal";
+}
+function checkTerminal(L) {
+  if (L.mode !== "terminal" || L.state !== "terminal" || !L.result || !fs.existsSync(L.result)) return;
+  const r = rj(L.result, {}); fs.rmSync(L.result, { force: true }); fs.rmSync(path.join(DATA, "login-tmp", L.id + "-cfg"), { recursive: true, force: true });
+  if (L.engine === "codex" && r.ok && fs.existsSync(path.join(L.home, "auth.json"))) addCodex(L);
+  else if (L.engine === "claude" && r.token) addClaude(L, r.token);
+  else { L.state = "error"; L.error = r.error || "The sign-in in Terminal didn't finish."; }
+}
+function startLogin(engine, name, opts = {}) {
+  name = String(name || "").replace(/[^\w .&'-]/g, "").replace(/\s+/g, " ").trim().slice(0, 30);
+  if (!name) return { error: "Give the account a name" };
+  if (!["claude", "codex"].includes(engine)) return { error: "Pick Claude or Codex" };
+  if (!(engine === "codex" ? CODEX : CLAUDE)) return { error: `The ${engine} program wasn't found on this computer (set ${engine}Bin in config.json).` };
+  if (opts.terminal && !TERMINAL) return { error: "Signing in with Terminal works on a Mac only. Use the link instead." };
+  if (accounts().some((a) => a.name.toLowerCase() === name.toLowerCase())) return { error: "That name is already used" };
+  for (const [k, l] of logins) if (Date.now() - l.at > 30 * 60e3) { try { l.proc.kill("SIGKILL"); } catch {} logins.delete(k); }
+  const id = "a" + uid(), L = { id, engine, name, at: Date.now(), state: "starting", url: "", code: "", error: "", proc: null, mode: opts.terminal ? "terminal" : "web" }; logins.set(id, L);
+  if (engine === "codex") L.home = newCodexHome(id);
+  if (opts.terminal) { terminalLogin(L); return loginView(L); }
+  if (engine === "codex") {
+    const p = cp.spawn(CODEX, ["login", "--device-auth"], { env: { ...envBase(), CODEX_HOME: L.home }, stdio: ["ignore", "pipe", "pipe"] }); L.proc = p; let out = "";
+    const read = (d) => { out += d; const t = out.replace(ANSI, ""); const u = /(https:\/\/auth\.openai\.com\/\S+)/.exec(t), c = /\b([A-Z0-9]{4}-[A-Z0-9]{4,6})\b/.exec(t); if (u) L.url = u[1]; if (c) L.code = c[1]; if (L.url && L.code && L.state === "starting") L.state = "waiting"; };
+    p.stdout.on("data", read); p.stderr.on("data", read); p.on("error", () => {});
+    p.on("close", (code) => {
+      if (L.state === "cancelled") return;
+      if (code === 0 && fs.existsSync(path.join(L.home, "auth.json"))) addCodex(L);
+      else { L.state = "error"; L.error = /expired|timed out/i.test(out) ? "The code expired. Start again." : "Codex didn't finish signing in. Start again."; }
+    });
+  } else {
+    const dir = path.join(DATA, "login-tmp", id); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });  // an empty Claude setup, so your own login is never touched
+    const p = cp.spawn("/usr/bin/python3", ["-I", path.join(__dirname, "tools", "claude-login.py")], { env: { ...envBase(), CLAUDE_CONFIG_DIR: dir, CLAUDEX_CLAUDE_BIN: CLAUDE }, stdio: ["pipe", "pipe", "pipe"] }); L.proc = p; let buf = "";
+    p.stdout.on("data", (d) => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); let o; try { o = JSON.parse(line); } catch { continue; }
+      if (o.url) { L.url = o.url; L.state = "waiting"; }
+      if (o.token) addClaude(L, o.token);
+      if (o.error) { L.state = "error"; L.error = o.error; } } });
+    p.on("error", () => {}); p.on("close", () => { fs.rmSync(dir, { recursive: true, force: true }); if (!["done", "error", "cancelled"].includes(L.state)) { const sent = L.state === "checking"; L.state = "error"; L.error = sent ? "Claude didn't accept that code. Start again and paste the newest code." : "Claude's sign-in stopped. Start again."; } });
+  }
+  return loginView(L);
+}
+const loginView = (L) => ({ id: L.id, engine: L.engine, name: L.name, state: L.state, url: L.url, code: L.code, error: L.error });
+function loginStatus(id) { const L = logins.get(id); if (!L) return { error: "That sign-in isn't running any more" }; checkTerminal(L); return loginView(L); }
+function loginCode(id, code) { const L = logins.get(id); if (!L || L.engine !== "claude" || !L.proc) return { error: "That sign-in isn't running any more" }; code = String(code || "").trim(); if (!code || code.length > 400 || /\s/.test(code)) return { error: "Paste the code exactly as claude.com shows it" }; L.proc.stdin.write(code + "\n"); L.state = "checking"; return loginView(L); }
+function cancelLogin(id) {
+  const L = logins.get(id); if (!L) return { ok: true }; L.state = "cancelled"; try { L.proc.kill("SIGKILL"); } catch {} logins.delete(id);
+  if (L.engine === "codex" && L.home && !fs.existsSync(path.join(L.home, "auth.json"))) fs.rmSync(L.home, { recursive: true, force: true });  // nothing signed in: drop the empty folder
+  return { ok: true };
+}
+/* Remove takes the account out of Claudex (chats on it go back to Auto). A Codex folder stays on disk with its sessions; delete ~/.codex-claudex-<id> yourself if you want it gone. */
+function removeAccount(id) {
+  const a = added.find((x) => x.id === id); if (!a) return { error: "Only accounts added here can be removed here (the others are in config.json)" };
+  added = added.filter((x) => x.id !== id); saveAdded();
+  let acct = id;
+  if (a.engine === "claude") { fs.rmSync(path.join(ACCT_DIR, id + ".token"), { force: true }); const i = CLAUDES.findIndex((x) => x.added === id); if (i >= 0) CLAUDES.splice(i, 1); }
+  else { acct = "cx" + a.n; const i = CODEX_HOMES.findIndex((c) => c.added === id); if (i >= 0) CODEX_HOMES.splice(i, 1); cxCache.at = 0; }
+  for (const c of chats.values()) if (c.settings.account === acct) { c.settings.account = "auto"; save(c); }
+  return { ok: true };
+}
+
 function shutdown() { for (const [id, j] of jobs) { j.stopped = true; try { process.kill(-j.proc.pid, "SIGTERM"); } catch {} } }
 module.exports = {
   shutdown,
-  state: () => ({ drives: drives(), accounts: accounts(), models: { claude: CLAUDE_MODELS, codex: codexModels() }, modes: MODES, folders: recentFolders(), prefs }),
-  mediaFile, queueApi, running, folders: folderApi, desktopSessions, importSession, drives, lowDrive, compact: (id) => send(id, COMPACT, [], { compact: true }), ver: () => ver, list, create: (b) => view(create(b)), get: (id, last) => { const c = chats.get(id); return c ? view(c, last) : null; }, update, remove, send, stop, retry, addUpload, upload, checkFolder,
+  state: () => ({ terminal: TERMINAL, drives: drives(), accounts: accounts(), models: { claude: CLAUDE_MODELS, codex: codexModels() }, modes: MODES, folders: recentFolders(), prefs }),
+  mediaFile, queueApi, running, startLogin, loginStatus, loginCode, cancelLogin, removeAccount, folders: folderApi, desktopSessions, importSession, drives, lowDrive, compact: (id) => send(id, COMPACT, [], { compact: true }), ver: () => ver, list, create: (b) => view(create(b)), get: (id, last) => { const c = chats.get(id); return c ? view(c, last) : null; }, update, remove, send, stop, retry, addUpload, upload, checkFolder,
 };
